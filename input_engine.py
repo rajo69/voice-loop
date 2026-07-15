@@ -157,9 +157,23 @@ class VoiceInput:
             return ""
         model = self._get_model()
         lang = self.stt.get("language") or None
-        segments, _ = model.transcribe(audio, language=lang,
-                                       beam_size=int(self.stt.get("beam_size", 1)),
-                                       vad_filter=True)
+        kw = dict(language=lang, beam_size=int(self.stt.get("beam_size", 1)),
+                  vad_filter=True)
+        if self.stt.get("polish", True):
+            import polish as _polish
+            hints = self.stt.get("initial_prompt") or (
+                "Software developer dictating: files like main.py, app.js, "
+                "package.json; tools like git, npm, Docker.")
+            kw["initial_prompt"] = hints
+            try:
+                kw["hotwords"] = _polish.build_hotwords(self.stt.get("vocabulary"))
+            except Exception:
+                pass
+        try:
+            segments, _ = model.transcribe(audio, **kw)
+        except TypeError:
+            kw.pop("hotwords", None)        # older faster-whisper
+            segments, _ = model.transcribe(audio, **kw)
         drop = float(self.stt.get("drop_no_speech_prob", 0.8))
         parts = []
         for s in segments:
@@ -173,6 +187,9 @@ class VoiceInput:
         text = " ".join(parts).strip()
         if text.lower().strip(" .!?,") in _FILLER and len(text) <= 12:
             return ""
+        if self.stt.get("polish", True) and text:
+            import polish as _polish
+            text = _polish.polish(text, self.stt.get("vocabulary"))
         return text
 
     # -- injection ---------------------------------------------------------
