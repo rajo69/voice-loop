@@ -19,5 +19,5 @@ jobs:
           python-version: ${{ matrix.python }}
       # Only the pure-logic suite runs in CI; audio/keyboard/model paths are
       # exercised on a real Windows machine (see README "Health check").
-      - run: pip install pytest
+      - run: pip install pytest numpy
       - run: pytest tests/ -q

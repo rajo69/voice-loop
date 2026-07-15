@@ -26,6 +26,7 @@ from pynput import keyboard
 
 import injector
 import log
+import stream_stt
 
 _MODMAP = {
     keyboard.Key.ctrl: "ctrl", keyboard.Key.ctrl_l: "ctrl", keyboard.Key.ctrl_r: "ctrl",
@@ -76,9 +77,15 @@ class _Recorder:
         self._frames = []
         self._stream = None
         self.active = False
+        self.on_chunk = None   # optional live-audio tap (incremental STT)
 
     def _cb(self, indata, frames, t, status):
         self._frames.append(indata.copy())
+        if self.on_chunk is not None:
+            try:
+                self.on_chunk(indata.flatten())
+            except Exception:
+                pass
 
     def _open(self, sr):
         kw = dict(samplerate=sr, channels=1, dtype="float32", callback=self._cb)
@@ -121,7 +128,11 @@ class _Recorder:
 class VoiceInput:
     def __init__(self, cfg, on_activate=None, on_text=None):
         self.cfg = cfg
-        stt = cfg["stt"]
+        stt = dict(cfg["stt"])
+        if stt.get("speed_profile", "accurate") == "fast":
+            # Trade accuracy for latency on weak machines.
+            stt["model"] = "base.en"
+            stt["beam_size"] = 2
         self.stt = stt
         self.sr = int(stt["sample_rate"])
         self.required = {_ALIASES.get(t.lower(), t.lower()) for t in cfg["hotkey"]}
@@ -137,6 +148,7 @@ class VoiceInput:
         self._rec_lock = threading.Lock()
         self._timer = None
         self._cur_hwnd = None
+        self._session = None
         self._queue = queue.Queue()
         self._worker = None
         self._listener = None
@@ -162,7 +174,10 @@ class VoiceInput:
             return ""
         model = self._get_model()
         lang = self.stt.get("language") or None
-        kw = dict(language=lang, beam_size=int(self.stt.get("beam_size", 5)),
+        beam = int(self.stt.get("beam_size", 5))
+        if self.stt.get("adaptive_beam", True) and audio.size < self.sr * 4:
+            beam = min(beam, 2)   # short utterances don't need a wide search
+        kw = dict(language=lang, beam_size=beam,
                   vad_filter=bool(self.stt.get("vad_filter", True)))
         if kw["vad_filter"]:
             # Pad speech edges and require a longer silence so words at the
@@ -245,6 +260,28 @@ class VoiceInput:
         except RuntimeError:
             pass
 
+    # -- incremental transcription ------------------------------------------
+    def _make_session(self):
+        """Create a StreamSession that transcribes pauses mid-recording, and
+        tap the recorder so live audio feeds it. Returns None when disabled."""
+        if not self.stt.get("incremental", True):
+            self._rec.on_chunk = None
+            return None
+        scfg = self.stt.get("stream") or {}
+        ep = stream_stt.EnergyEndpointer(
+            sr=self.sr,
+            threshold=float(scfg.get("threshold", 0.01)),
+            min_silence_ms=int(scfg.get("min_silence_ms", 600)),
+            min_speech_ms=int(scfg.get("min_speech_ms", 200)))
+        session = stream_stt.StreamSession(self._transcribe, sr=self.sr, ep=ep)
+        rec = self._rec
+
+        def _tap(chunk):
+            session.feed(_resample(chunk, rec.capture_sr, rec.sr))
+
+        rec.on_chunk = _tap
+        return session
+
     # -- recording orchestration ------------------------------------------
     def _cancel_timer(self):
         if self._timer is not None:
@@ -273,10 +310,13 @@ class VoiceInput:
                     self.on_activate()
                 except Exception:
                     pass
+            self._session = self._make_session()
             try:
                 self._rec.start()
             except Exception:
                 log.exception("[stt] microphone open failed")
+                self._rec.on_chunk = None
+                self._session = None
                 self._beep("error")
                 return
             self._beep("start")
@@ -293,14 +333,20 @@ class VoiceInput:
                 return
             self._cancel_timer()
             try:
-                audio = self._rec.stop()
+                audio = self._rec.stop()   # stops the stream: no more taps
             except Exception:
                 log.exception("[stt] microphone stop failed")
                 self._beep("error")
                 return
+            finally:
+                self._rec.on_chunk = None
             hwnd = self._cur_hwnd
+            session, self._session = self._session, None
         self._beep("stop")
-        self._queue.put((audio, hwnd))
+        if session is not None:
+            self._queue.put(("session", session, hwnd))
+        else:
+            self._queue.put(("audio", audio, hwnd))
 
     def _toggle(self):
         if self._rec.active:
@@ -313,9 +359,14 @@ class VoiceInput:
             item = self._queue.get()
             if item is None:
                 return
-            audio, hwnd = item
+            kind, payload, hwnd = item
             try:
-                text = self._transcribe(audio)
+                if kind == "session":
+                    # Segments were transcribed during the hold; this just
+                    # finishes the tail and joins the pieces.
+                    text = payload.finalize()
+                else:
+                    text = self._transcribe(payload)
             except Exception:
                 log.exception("[stt] transcription failed")
                 self._beep("error")

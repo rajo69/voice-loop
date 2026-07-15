@@ -7,6 +7,14 @@
     "sample_rate": 16000,
     "device_index": null,
     "beam_size": 5,
+    "adaptive_beam": true,
+    "speed_profile": "accurate",
+    "incremental": true,
+    "stream": {
+      "threshold": 0.01,
+      "min_silence_ms": 600,
+      "min_speech_ms": 200
+    },
     "vad_filter": true,
     "vad_speech_pad_ms": 400,
     "vad_min_silence_ms": 700,
