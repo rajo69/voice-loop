@@ -15,9 +15,11 @@ critical path.
 Run:  python voiced.py      Quit: Ctrl+C
 """
 import json
+import signal
 import socket
 import sys
 import threading
+import time
 
 import log
 from common import load_config
@@ -26,6 +28,7 @@ from speaker import Speaker
 from summarize import summarize_for_speech
 
 CFG = load_config()
+SHUTDOWN = threading.Event()
 
 
 def _read_all(conn):
@@ -79,6 +82,10 @@ class Server(threading.Thread):
         cmd = msg.get("cmd")
         if cmd == "stop":
             self.speaker.interrupt()
+            return
+        if cmd == "shutdown":
+            log.info("[voice-loop] shutdown requested.")
+            SHUTDOWN.set()
             return
         if cmd == "ping":
             return
@@ -135,11 +142,23 @@ def main():
 
     vin.prewarm()   # load STT model now so the first dictation isn't slow
     vin.start()
-    log.info("[voice-loop] ready. Hold the hotkey to dictate. Ctrl+C to quit.")
+    log.info("[voice-loop] ready. Hold the hotkey to dictate. "
+             "Ctrl+C (or stop.ps1) to quit.")
+
+    # Wait on an interruptible loop rather than the listener's blocking join(),
+    # so Ctrl+C reaches us even though pynput holds the input hook.
     try:
-        vin.join()
+        signal.signal(signal.SIGINT, lambda *_: SHUTDOWN.set())
+        signal.signal(signal.SIGBREAK, lambda *_: SHUTDOWN.set())
+    except (ValueError, AttributeError, OSError):
+        pass
+    try:
+        while not SHUTDOWN.is_set():
+            time.sleep(0.3)
     except KeyboardInterrupt:
         pass
+    vin.stop()
+    log.info("[voice-loop] stopped.")
 
 
 if __name__ == "__main__":
