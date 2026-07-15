@@ -6,6 +6,7 @@ followed by the synthesized audio. Kokoro audio is played through
 sounddevice (stoppable mid-stream); SAPI is played via a PowerShell child
 process that we can terminate.
 """
+import queue
 import re
 import threading
 import time
@@ -18,19 +19,39 @@ from tts import make_engine, SapiEngine
 _SENT = re.compile(r"(?<=[.!?])\s+")
 
 
-def _chunks(text, max_len=240):
-    """Split spoken text into sentence-ish chunks for streaming synthesis."""
-    out = []
-    for s in _SENT.split(text):
-        s = s.strip()
-        if not s:
-            continue
-        while len(s) > max_len:                     # hard-wrap very long spans
+def _chunks(text, min_len=90, max_len=200):
+    """Group sentences into chunks for streaming synthesis.
+
+    The FIRST chunk is a single sentence so audio starts fast; later sentences
+    are merged (~min_len) so each synthesizes before the previous finishes
+    playing (no mid-stream gaps), and over-long sentences are word-wrapped.
+    """
+    # hard-wrap over-long sentences at word boundaries first
+    parts = []
+    for s in (x.strip() for x in _SENT.split(text) if x.strip()):
+        while len(s) > max_len:
             cut = s.rfind(" ", 0, max_len)
             cut = cut if cut > 0 else max_len
-            out.append(s[:cut].strip())
+            parts.append(s[:cut].strip())
             s = s[cut:].strip()
-        out.append(s)
+        if s:
+            parts.append(s)
+
+    out, buf = [], ""
+    for s in parts:
+        if not buf:
+            buf = s
+        elif len(buf) + 1 + len(s) <= max_len:
+            buf = f"{buf} {s}"
+        else:
+            out.append(buf)
+            buf = s
+        # first chunk: flush after one sentence (fast start); then flush at min_len
+        if (not out) or len(buf) >= min_len:
+            out.append(buf)
+            buf = ""
+    if buf:
+        out.append(buf)
     return out
 
 
@@ -92,24 +113,52 @@ class Speaker:
             print(f"[tts] playback error: {e}", flush=True)
 
     def _play_samples(self, text, stop):
-        # Stream sentence-by-sentence: the first words play after only the
-        # first chunk is synthesized, instead of waiting for the whole answer.
-        for chunk in _chunks(text):
-            if stop.is_set():
-                return
-            result = self.engine.synth(chunk)
-            if stop.is_set() or not result:
-                return
-            samples, sr = result
-            if samples is None or len(samples) == 0:
+        # Pipelined streaming: a producer thread synthesizes the NEXT sentence
+        # while the current one is playing, so there are no gaps between them.
+        chunks = _chunks(text)
+        audio_q = queue.Queue(maxsize=2)
+        SENTINEL = object()
+
+        def producer():
+            for ch in chunks:
+                if stop.is_set():
+                    break
+                try:
+                    res = self.engine.synth(ch)
+                except Exception as e:
+                    print(f"[tts] synth error: {e}", flush=True)
+                    continue
+                if stop.is_set():
+                    break
+                if res and res[0] is not None and len(res[0]) > 0:
+                    while not stop.is_set():
+                        try:
+                            audio_q.put(res, timeout=0.1)
+                            break
+                        except queue.Full:
+                            continue
+            try:
+                audio_q.put(SENTINEL, timeout=0.5)
+            except queue.Full:
+                pass
+
+        threading.Thread(target=producer, daemon=True).start()
+
+        while not stop.is_set():
+            try:
+                item = audio_q.get(timeout=0.1)
+            except queue.Empty:
                 continue
+            if item is SENTINEL:
+                return
+            samples, sr = item
             sd.play(samples, sr)
-            deadline = time.time() + len(samples) / float(sr) + 0.15
+            deadline = time.time() + len(samples) / float(sr)   # gapless hand-off
             while time.time() < deadline:
                 if stop.is_set():
                     sd.stop()
                     return
-                time.sleep(0.03)
+                time.sleep(0.02)
 
     def _play_sapi(self, text, stop):
         import subprocess
