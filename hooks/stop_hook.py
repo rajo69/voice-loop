@@ -62,14 +62,30 @@ def send_to_daemon(text, cfg):
 
 
 def fallback_speak(text):
-    """Detached one-shot readback if the daemon isn't up (never blocks)."""
+    """Detached one-shot readback if the daemon isn't up (never blocks).
+
+    stdout/stderr must go to DEVNULL: with them inherited, the detached child
+    holds the hook's output pipes open and Claude Code waits on them until the
+    speech process exits ("stopping hook..." hang). stdin is closed after the
+    write so speak.py sees EOF, and the text is capped so the write itself can
+    never block on a full pipe.
+    """
     py = sys.executable
-    subprocess.Popen(
+    proc = subprocess.Popen(
         [py, os.path.join(ROOT, "speak.py")],
-        stdin=subprocess.PIPE, text=True, encoding="utf-8", cwd=ROOT,
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, text=True, encoding="utf-8", cwd=ROOT,
         creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                       | getattr(subprocess, "DETACHED_PROCESS", 0)),
-    ).stdin.write(text)
+                       | getattr(subprocess, "DETACHED_PROCESS", 0)
+                       | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)),
+    )
+    try:
+        proc.stdin.write(text[:4000])
+    finally:
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
 
 
 def main():
@@ -95,4 +111,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        pass  # a readback failure must never break the hook chain

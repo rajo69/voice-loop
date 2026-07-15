@@ -10,9 +10,15 @@ import queue
 import re
 import threading
 import time
-import winsound
 
-import sounddevice as sd
+try:                                    # Windows-only; absent on CI/Linux
+    import winsound
+except ImportError:
+    winsound = None
+try:                                    # needs PortAudio; absent on CI/Linux
+    import sounddevice as sd
+except (ImportError, OSError):
+    sd = None
 
 from tts import make_engine, SapiEngine
 
@@ -72,7 +78,8 @@ class Speaker:
         """Stop whatever is currently playing."""
         self._stop.set()
         try:
-            sd.stop()
+            if sd is not None:
+                sd.stop()
         except Exception:
             pass
         with self._lock:
@@ -97,7 +104,7 @@ class Speaker:
 
     # -- internals ---------------------------------------------------------
     def _run(self, text, stop):
-        if self.ping and not stop.is_set():
+        if self.ping and winsound is not None and not stop.is_set():
             try:
                 winsound.Beep(660, 120)
             except RuntimeError:
@@ -113,6 +120,8 @@ class Speaker:
             print(f"[tts] playback error: {e}", flush=True)
 
     def _play_samples(self, text, stop):
+        if sd is None:
+            return
         # Pipelined streaming: a producer thread synthesizes the NEXT sentence
         # while the current one is playing, so there are no gaps between them.
         chunks = _chunks(text)

@@ -14,7 +14,11 @@ Rock-solid design notes:
 import queue
 import threading
 import time
-import winsound
+
+try:                                    # Windows-only; absent on CI/Linux
+    import winsound
+except ImportError:
+    winsound = None
 
 import numpy as np
 import sounddevice as sd
@@ -136,6 +140,7 @@ class VoiceInput:
         self._queue = queue.Queue()
         self._worker = None
         self._listener = None
+        self._kbd = keyboard.Controller()   # used by _neutralize_start_menu
 
     # -- model / transcription --------------------------------------------
     def _get_model(self):
@@ -223,6 +228,8 @@ class VoiceInput:
 
     # -- feedback ----------------------------------------------------------
     def _beep(self, kind):
+        if winsound is None:
+            return
         if not self.stt.get("notify_start_stop") and kind in ("start", "stop"):
             return
         try:

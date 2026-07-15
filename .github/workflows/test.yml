@@ -1,0 +1,23 @@
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  pytest:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # Only the pure-logic suite runs in CI; audio/keyboard/model paths are
+      # exercised on a real Windows machine (see README "Health check").
+      - run: pip install pytest
+      - run: pytest tests/ -q
