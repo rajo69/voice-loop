@@ -9,6 +9,10 @@
     "beam_size": 1,
     "trigger": "hold",
     "inject": "paste",
+    "target_window": "capture",
+    "collapse_newlines": true,
+    "max_record_seconds": 60,
+    "drop_no_speech_prob": 0.8,
     "auto_enter": false,
     "type_delay": 0.0,
     "notify_start_stop": true

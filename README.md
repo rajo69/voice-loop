@@ -59,6 +59,10 @@ Restart Claude Code so it picks up the hook.
 | `hotkey` | Dictation trigger keys. Default `["shift","cmd"]` (Shift+Win). `cmd` = Windows key. |
 | `stt.trigger` | `hold` (hold-to-talk, release to send) or `toggle` (press to start/stop). |
 | `stt.inject` | `paste` (clipboard paste — reliable for long text) or `type` (char-by-char). |
+| `stt.target_window` | `capture` (paste into the window focused when you started talking) or `focused` (whatever's focused at paste time). |
+| `stt.max_record_seconds` | Auto-stop + send if a hold runs this long (guards against a missed key-release). |
+| `stt.collapse_newlines` | Flatten newlines in dictation so a paste can't submit the prompt early. |
+| `stt.drop_no_speech_prob` | Drop filler/hallucinated segments above this no-speech probability. |
 | `stt.model` | `base.en` (default); `tiny.en` for weaker machines; `small.en`/`medium.en` for more accuracy. |
 | `stt.auto_enter` | `true` to submit automatically after dictation. |
 | `summary.mode` | `extractive` (compress long answers) or `verbatim` (read cleaned text). |
@@ -71,6 +75,24 @@ Restart Claude Code so it picks up the hook.
 
 ### Pluggable input (use Wispr Flow instead)
 If you prefer Wispr Flow / Win+H for dictation, just don't rely on the hotkey — the readback half works independently. To disable our STT hotkey entirely, set `hotkey` to `[]`. The daemon still runs the readback server.
+
+## Health check
+
+Verify the whole dictation chain (mic → transcription → TTS) on your machine:
+```powershell
+.venv\Scripts\python.exe diagnose.py            # records 3s and checks each stage
+.venv\Scripts\python.exe diagnose.py --devices  # just list input devices
+```
+If the wrong mic is picked, note its index from `--devices` and set `stt.device_index` in `config.json`.
+
+## Reliability (Mode 1)
+
+Dictation is hardened against the common failure modes:
+- **Window targeting** — the window focused when you *start* talking is refocused before pasting, so text can't land in the Start menu or a window that stole focus.
+- **Decoupled transcription** — recording is instant; transcription runs in a worker queue, so fast or back-to-back holds never drop.
+- **Sample-rate fallback** — if your mic doesn't do 16 kHz it's captured at its native rate and resampled.
+- **Hallucination filter** — Whisper's phantom "thank you"/"you" on silence is dropped.
+- **Guards** — max-record auto-stop, clean modifier release before paste, single-instance daemon, and a rotating log at `logs/voiceloop.log`.
 
 ## Test without Claude
 

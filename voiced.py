@@ -19,6 +19,7 @@ import socket
 import sys
 import threading
 
+import log
 from common import load_config
 from input_engine import VoiceInput
 from speaker import Speaker
@@ -50,11 +51,13 @@ class Server(threading.Thread):
         self.port = port
         self._sock = None
 
-    def run(self):
+    def bind(self):
+        """Bind the port up front so a second instance fails loudly, not silently."""
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind((self.host, self.port))
         self._sock.listen(8)
+
+    def run(self):
         print(f"[out] readback server on {self.host}:{self.port}", flush=True)
         while True:
             try:
@@ -113,17 +116,26 @@ def main():
     vin = VoiceInput(CFG, on_activate=barge_in)
 
     hk = "+".join(sorted(vin.required))
-    print(f"[voice-loop] daemon starting. Hotkey: {hk}")
+    log.info(f"[voice-loop] daemon starting. Hotkey: {hk}")
+
     if speaker:
-        print(f"[out] TTS engine: {speaker.engine_name}")
+        log.info(f"[out] TTS engine: {speaker.engine_name}")
         _prewarm(speaker)
         d = CFG["daemon"]
-        Server(speaker, CFG["summary"], d["host"], int(d["port"])).start()
+        server = Server(speaker, CFG["summary"], d["host"], int(d["port"]))
+        try:
+            server.bind()
+        except OSError:
+            log.error(f"[voice-loop] port {d['port']} already in use -- is the "
+                      f"daemon already running? Exiting.")
+            sys.exit(1)
+        server.start()
     else:
-        print("[out] TTS disabled in config.")
+        log.info("[out] TTS disabled in config.")
 
+    vin.prewarm()   # load STT model now so the first dictation isn't slow
     vin.start()
-    print("[voice-loop] ready. Press the hotkey to dictate. Ctrl+C to quit.")
+    log.info("[voice-loop] ready. Hold the hotkey to dictate. Ctrl+C to quit.")
     try:
         vin.join()
     except KeyboardInterrupt:
