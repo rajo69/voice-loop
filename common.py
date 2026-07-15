@@ -14,6 +14,8 @@ _DEFAULTS = {
         "sample_rate": 16000,
         "device_index": None,
         "beam_size": 1,
+        "trigger": "hold",
+        "inject": "paste",
         "auto_enter": False,
         "type_delay": 0.0,
         "notify_start_stop": True,

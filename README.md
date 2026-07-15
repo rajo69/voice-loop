@@ -49,14 +49,16 @@ Restart Claude Code so it picks up the hook.
    ./start.ps1
    ```
 2. Open Claude Code in another terminal.
-3. **Shift + Win** → speak → **Shift + Win** to stop → text appears → **Enter** to send.
-4. Claude answers → ping + spoken summary. Start talking (or send a new prompt) to cut a readback short.
+3. **Hold Shift + Win**, speak, **release** → your words are pasted into the prompt → press **Enter** to send. *(Set `stt.trigger` to `"toggle"` for press-once-to-start, press-again-to-stop instead.)*
+4. Claude answers → ping + spoken summary, **streamed** so it starts within ~1s. Start talking (or send a new prompt) to cut a readback short.
 
 ## Configuration — `config.json`
 
 | Key | Meaning |
 |-----|---------|
-| `hotkey` | Dictation toggle. Default `["shift","cmd"]` (Shift+Win). `cmd` = Windows key. |
+| `hotkey` | Dictation trigger keys. Default `["shift","cmd"]` (Shift+Win). `cmd` = Windows key. |
+| `stt.trigger` | `hold` (hold-to-talk, release to send) or `toggle` (press to start/stop). |
+| `stt.inject` | `paste` (clipboard paste — reliable for long text) or `type` (char-by-char). |
 | `stt.model` | `base.en` (default); `tiny.en` for weaker machines; `small.en`/`medium.en` for more accuracy. |
 | `stt.auto_enter` | `true` to submit automatically after dictation. |
 | `summary.mode` | `extractive` (compress long answers) or `verbatim` (read cleaned text). |

@@ -6,6 +6,7 @@ followed by the synthesized audio. Kokoro audio is played through
 sounddevice (stoppable mid-stream); SAPI is played via a PowerShell child
 process that we can terminate.
 """
+import re
 import threading
 import time
 import winsound
@@ -13,6 +14,24 @@ import winsound
 import sounddevice as sd
 
 from tts import make_engine, SapiEngine
+
+_SENT = re.compile(r"(?<=[.!?])\s+")
+
+
+def _chunks(text, max_len=240):
+    """Split spoken text into sentence-ish chunks for streaming synthesis."""
+    out = []
+    for s in _SENT.split(text):
+        s = s.strip()
+        if not s:
+            continue
+        while len(s) > max_len:                     # hard-wrap very long spans
+            cut = s.rfind(" ", 0, max_len)
+            cut = cut if cut > 0 else max_len
+            out.append(s[:cut].strip())
+            s = s[cut:].strip()
+        out.append(s)
+    return out
 
 
 class Speaker:
@@ -73,24 +92,24 @@ class Speaker:
             print(f"[tts] playback error: {e}", flush=True)
 
     def _play_samples(self, text, stop):
-        result = self.engine.synth(text)
-        if stop.is_set() or not result:
-            return
-        samples, sr = result
-        if samples is None or len(samples) == 0:
-            return
-        sd.play(samples, sr)
-        duration = len(samples) / float(sr)
-        deadline = time.time() + duration + 0.2
-        while time.time() < deadline:
+        # Stream sentence-by-sentence: the first words play after only the
+        # first chunk is synthesized, instead of waiting for the whole answer.
+        for chunk in _chunks(text):
             if stop.is_set():
-                sd.stop()
                 return
-            time.sleep(0.05)
-        try:
-            sd.wait()
-        except Exception:
-            pass
+            result = self.engine.synth(chunk)
+            if stop.is_set() or not result:
+                return
+            samples, sr = result
+            if samples is None or len(samples) == 0:
+                continue
+            sd.play(samples, sr)
+            deadline = time.time() + len(samples) / float(sr) + 0.15
+            while time.time() < deadline:
+                if stop.is_set():
+                    sd.stop()
+                    return
+                time.sleep(0.03)
 
     def _play_sapi(self, text, stop):
         import subprocess

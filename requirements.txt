@@ -2,6 +2,7 @@ faster-whisper>=1.0.0
 sounddevice>=0.4.6
 numpy>=1.24
 pynput>=1.7.6
+pyperclip>=1.8
 kokoro-onnx>=0.4.0
 onnxruntime>=1.17
 soundfile>=0.12

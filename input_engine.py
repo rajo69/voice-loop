@@ -76,8 +76,10 @@ class VoiceInput:
         self.stt = stt
         self.sr = int(stt["sample_rate"])
         self.required = {_ALIASES.get(t.lower(), t.lower()) for t in cfg["hotkey"]}
+        self.trigger = stt.get("trigger", "hold")   # "hold" or "toggle"
+        self.inject = stt.get("inject", "paste")     # "paste" or "type"
         self.on_activate = on_activate            # called when recording starts
-        self.on_text = on_text or self._type_text  # default: type into focus
+        self.on_text = on_text or self._inject_text  # default: inject into focus
         self._rec = _Recorder(self.sr, stt.get("device_index"))
         self._model = None
         self._model_lock = threading.Lock()
@@ -117,18 +119,15 @@ class VoiceInput:
                 return
             time.sleep(0.03)
 
-    def _type_text(self, text):
+    def _inject_text(self, text):
         self._wait_mods_released()
-        delay = float(self.stt.get("type_delay", 0.0))
-        if delay > 0:
-            for ch in text:
-                self._kbd.type(ch)
-                time.sleep(delay)
+        import injector
+        if self.inject == "type":
+            injector.type_text(text, float(self.stt.get("type_delay", 0.0)))
         else:
-            self._kbd.type(text)
+            injector.paste_text(text)
         if self.stt.get("auto_enter"):
-            self._kbd.press(keyboard.Key.enter)
-            self._kbd.release(keyboard.Key.enter)
+            injector.press_enter()
 
     def _beep(self, kind):
         if not self.stt.get("notify_start_stop"):
@@ -139,31 +138,47 @@ class VoiceInput:
             pass
 
     # -- orchestration -----------------------------------------------------
-    def _toggle(self):
+    def _start_record(self):
+        if not self._busy.acquire(blocking=False):
+            return
+        try:
+            if self._rec.active:
+                return
+            if self.on_activate:
+                try:
+                    self.on_activate()   # barge-in: stop any readback
+                except Exception:
+                    pass
+            self._beep("start")
+            self._rec.start()
+            hint = "release to send" if self.trigger == "hold" else "press again to stop"
+            print(f"[stt] recording... ({hint})", flush=True)
+        finally:
+            self._busy.release()
+
+    def _stop_and_process(self):
         if not self._busy.acquire(blocking=False):
             return
         try:
             if not self._rec.active:
-                if self.on_activate:
-                    try:
-                        self.on_activate()   # barge-in: stop any readback
-                    except Exception:
-                        pass
-                self._beep("start")
-                self._rec.start()
-                print("[stt] recording... (press hotkey again to stop)", flush=True)
+                return
+            audio = self._rec.stop()
+            self._beep("stop")
+            print("[stt] transcribing...", flush=True)
+            text = self._transcribe(audio)
+            if text:
+                print(f"[stt] -> {text}", flush=True)
+                self.on_text(text)
             else:
-                audio = self._rec.stop()
-                self._beep("stop")
-                print("[stt] transcribing...", flush=True)
-                text = self._transcribe(audio)
-                if text:
-                    print(f"[stt] -> {text}", flush=True)
-                    self.on_text(text)
-                else:
-                    print("[stt] (no speech detected)", flush=True)
+                print("[stt] (no speech detected)", flush=True)
         finally:
             self._busy.release()
+
+    def _toggle(self):
+        if self._rec.active:
+            self._stop_and_process()
+        else:
+            self._start_record()
 
     def _on_press(self, key):
         tok = _normalize(key)
@@ -171,12 +186,18 @@ class VoiceInput:
             self._pressed.add(tok)
         if self.required and self.required <= self._pressed and not self._armed:
             self._armed = True
-            threading.Thread(target=self._toggle, daemon=True).start()
+            if self.trigger == "hold":
+                threading.Thread(target=self._start_record, daemon=True).start()
+            else:
+                threading.Thread(target=self._toggle, daemon=True).start()
 
     def _on_release(self, key):
         self._pressed.discard(_normalize(key))
         if not (self.required <= self._pressed):
+            was_armed = self._armed
             self._armed = False
+            if self.trigger == "hold" and was_armed and self._rec.active:
+                threading.Thread(target=self._stop_and_process, daemon=True).start()
 
     def start(self):
         self._listener = keyboard.Listener(on_press=self._on_press,
