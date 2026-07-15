@@ -1,0 +1,42 @@
+{
+  "hotkey": ["shift", "cmd"],
+  "stt": {
+    "model": "base.en",
+    "compute_type": "int8",
+    "language": "en",
+    "sample_rate": 16000,
+    "device_index": null,
+    "beam_size": 1,
+    "auto_enter": false,
+    "type_delay": 0.0,
+    "notify_start_stop": true
+  },
+  "summary": {
+    "mode": "extractive",
+    "short_threshold_chars": 350,
+    "max_sentences": 6,
+    "max_chars": 1000,
+    "skip_code_blocks": true
+  },
+  "tts": {
+    "enabled": true,
+    "engine": "auto",
+    "ping": true,
+    "kokoro": {
+      "model_path": "models/kokoro-v1.0.onnx",
+      "voices_path": "models/voices-v1.0.bin",
+      "voice": "af_heart",
+      "speed": 1.0,
+      "lang": "en-us"
+    },
+    "sapi": {
+      "rate": 1,
+      "volume": 100,
+      "voice": null
+    }
+  },
+  "daemon": {
+    "host": "127.0.0.1",
+    "port": 8765
+  }
+}

@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Models (downloaded by install.ps1, large)
+models/
+
+# Audio scratch
+*.wav
+
+# OS
+Thumbs.db
+Desktop.ini
