@@ -157,8 +157,15 @@ class VoiceInput:
             return ""
         model = self._get_model()
         lang = self.stt.get("language") or None
-        kw = dict(language=lang, beam_size=int(self.stt.get("beam_size", 1)),
-                  vad_filter=True)
+        kw = dict(language=lang, beam_size=int(self.stt.get("beam_size", 5)),
+                  vad_filter=bool(self.stt.get("vad_filter", True)))
+        if kw["vad_filter"]:
+            # Pad speech edges and require a longer silence so words at the
+            # start/end of a phrase aren't clipped.
+            kw["vad_parameters"] = dict(
+                speech_pad_ms=int(self.stt.get("vad_speech_pad_ms", 400)),
+                min_silence_duration_ms=int(self.stt.get("vad_min_silence_ms", 700)),
+            )
         if self.stt.get("polish", True):
             import polish as _polish
             hints = self.stt.get("initial_prompt") or (
@@ -329,11 +336,24 @@ class VoiceInput:
             else:
                 threading.Thread(target=self._toggle, daemon=True).start()
 
+    def _neutralize_start_menu(self):
+        """Mask the Windows-key release with a Ctrl tap so the Start menu
+        doesn't pop (the same trick AutoHotkey uses for Win-based hotkeys)."""
+        if not self.stt.get("suppress_start_menu", True) or "cmd" not in self.required:
+            return
+        try:
+            self._kbd.press(keyboard.Key.ctrl)
+            self._kbd.release(keyboard.Key.ctrl)
+        except Exception:
+            pass
+
     def _on_release(self, key):
         self._pressed.discard(_normalize(key))
         if not (self.required <= self._pressed):
             was_armed = self._armed
             self._armed = False
+            if was_armed:
+                self._neutralize_start_menu()
             if self.trigger == "hold" and was_armed:
                 threading.Thread(target=self._stop_and_process, daemon=True).start()
 
