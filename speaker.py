@@ -99,20 +99,25 @@ class Speaker:
         if t is not None and t.is_alive() and t is not threading.current_thread():
             t.join(timeout=1.5)
 
-    def speak(self, text):
+    def speak(self, text, ping_kind="done"):
         if not text:
             return
         self.interrupt()
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, args=(text, self._stop),
+        self._thread = threading.Thread(target=self._run,
+                                        args=(text, self._stop, ping_kind),
                                         daemon=True)
         self._thread.start()
 
     # -- internals ---------------------------------------------------------
-    def _run(self, text, stop):
+    def _run(self, text, stop, ping_kind="done"):
         if self.ping and winsound is not None and not stop.is_set():
             try:
-                winsound.Beep(660, 120)
+                if ping_kind == "question":     # rising: Claude needs input
+                    winsound.Beep(660, 90)
+                    winsound.Beep(880, 120)
+                else:
+                    winsound.Beep(660, 120)
             except RuntimeError:
                 pass
         if stop.is_set():

@@ -90,6 +90,7 @@ Common Whisper mishears ("cloud go", "claude halt") are accepted. Add your own p
 | `conversation.min_silence_ms` | Pause length that ends an utterance in Mode 2. |
 | `conversation.commands` | Override the spoken commands, e.g. `{"go": ["send it"]}`. |
 | `summary.mode` | `extractive` (compress long answers) or `verbatim` (read cleaned text). |
+| `summary.style` | `conversational` (default: contractions, spoken symbols, "I've skipped 2 code blocks") or `neutral`. A closing question is always read in full, with a distinct rising ping. |
 | `summary.short_threshold_chars` | Answers shorter than this are read (nearly) whole. |
 | `summary.max_sentences` / `max_chars` | Caps for long-answer compression. |
 | `tts.engine` | `auto` (Kokoro if model present, else SAPI), `kokoro`, or `sapi`. |

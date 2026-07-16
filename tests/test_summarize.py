@@ -1,7 +1,9 @@
-from summarize import summarize_for_speech
+from summarize import summarize_for_speech, humanize
 
+# Structural tests pin style=neutral; conversational style is tested below.
 CFG = {
     "mode": "extractive",
+    "style": "neutral",
     "short_threshold_chars": 350,
     "max_sentences": 6,
     "max_chars": 1000,
@@ -70,3 +72,35 @@ def test_verbatim_mode_reads_whole_short_text():
 def test_empty_input():
     assert summarize_for_speech("", CFG) == ""
     assert summarize_for_speech(None, CFG) == ""
+
+
+# -- conversational style (Phase 3: human tone) -------------------------------
+
+def test_humanize_contractions_preserve_case():
+    assert humanize("It is done. I will check that it is not broken.") == \
+        "It's done. I'll check that it isn't broken."
+
+
+def test_humanize_spoken_symbols():
+    assert humanize("Use a cache, e.g. Redis & Memcached, ~30% faster.") == \
+        "Use a cache, for example, Redis and Memcached, about 30 percent faster."
+
+
+def test_conversational_code_note():
+    cfg = dict(CFG, style="conversational")
+    text = "Here is the fix.\n\n```python\nx = 1\n```\n\nAll tests pass."
+    out = summarize_for_speech(text, cfg)
+    assert "I've skipped 1 code block." in out
+
+
+def test_closing_question_never_dropped():
+    body = " ".join(f"Filler sentence number {i} explaining things." for i in range(30))
+    text = f"First point. {body} Want me to apply the fix?"
+    out = summarize_for_speech(text, CFG)
+    assert out.rstrip().endswith("Want me to apply the fix?")
+
+
+def test_questions_keep_their_question_mark():
+    text = "Short answer here. Should I proceed?"
+    out = summarize_for_speech(text, CFG)
+    assert "Should I proceed?" in out

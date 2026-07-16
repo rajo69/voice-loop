@@ -42,6 +42,7 @@
   },
   "summary": {
     "mode": "extractive",
+    "style": "conversational",
     "short_threshold_chars": 350,
     "max_sentences": 6,
     "max_chars": 1000,

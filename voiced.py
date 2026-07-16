@@ -103,7 +103,8 @@ class Server(threading.Thread):
         if spoken:
             print(f"[out] speaking ({len(spoken)} chars): {spoken[:80]}...",
                   flush=True)
-            self.speaker.speak(spoken)
+            kind = "question" if spoken.rstrip().endswith("?") else "done"
+            self.speaker.speak(spoken, ping_kind=kind)
 
 
 def _prewarm(speaker):

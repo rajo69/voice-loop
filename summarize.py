@@ -16,6 +16,44 @@ _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*)$")
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
+# -- conversational style ("human tone", fully offline) ----------------------
+# Written shorthand -> how a person would say it.
+_SPOKEN = [
+    (re.compile(r"\be\.g\.,?\s*", re.I), "for example, "),
+    (re.compile(r"\bi\.e\.,?\s*", re.I), "that is, "),
+    (re.compile(r"\bvs\.?\s", re.I), "versus "),
+    (re.compile(r"\betc\.(?=[\s,)])"), "et cetera"),
+    (re.compile(r"\s*&\s*"), " and "),
+    (re.compile(r"(?<=\d)\s*%"), " percent"),
+    (re.compile(r"~\s*(?=\d)"), "about "),
+    (re.compile(r"(?<=[\w)])\s*(?:->|→)\s*(?=\w)"), " to "),
+]
+# Stiff written forms -> contractions (case of the first word preserved).
+_CONTRACTIONS = [
+    ("do not", "don't"), ("does not", "doesn't"), ("did not", "didn't"),
+    ("cannot", "can't"), ("can not", "can't"), ("will not", "won't"),
+    ("is not", "isn't"), ("are not", "aren't"), ("was not", "wasn't"),
+    ("it is", "it's"), ("that is", "that's"), ("there is", "there's"),
+    ("you are", "you're"), ("we are", "we're"),
+    ("I will", "I'll"), ("we will", "we'll"), ("you will", "you'll"),
+    ("I have", "I've"), ("we have", "we've"), ("you have", "you've"),
+    ("let us", "let's"), ("I am", "I'm"),
+]
+
+
+def _match_case(repl, original):
+    return repl[0].upper() + repl[1:] if original[:1].isupper() else repl
+
+
+def humanize(text):
+    """Make cleaned text sound spoken, not written. Deterministic, offline."""
+    for pat, rep in _SPOKEN:
+        text = pat.sub(rep, text)
+    for written, spoken in _CONTRACTIONS:
+        pat = re.compile(r"\b" + written.replace(" ", r"\s+") + r"\b", re.I)
+        text = pat.sub(lambda m, s=spoken: _match_case(s, m.group(0)), text)
+    return re.sub(r"\s+", " ", text).strip()
+
 
 def _clean_inline(t):
     t = _INLINE_CODE.sub(r"\1", t)                       # `code` -> code
@@ -78,14 +116,19 @@ def summarize_for_speech(md, cfg):
     max_sent = int(cfg.get("max_sentences", 6))
     max_chars = int(cfg.get("max_chars", 1000))
     mode = cfg.get("mode", "extractive")
+    conversational = cfg.get("style", "conversational") == "conversational"
 
     n_code = len(_CODE_FENCE.findall(md))
     body = _CODE_FENCE.sub(" ", md)
 
     code_note = ""
     if skip_code and n_code:
-        code_note = " {} code block{} omitted.".format(
-            n_code, "s" if n_code > 1 else "")
+        if conversational:
+            code_note = " I've skipped {} code block{}.".format(
+                n_code, "s" if n_code > 1 else "")
+        else:
+            code_note = " {} code block{} omitted.".format(
+                n_code, "s" if n_code > 1 else "")
 
     cleaned_all = _clean_inline(body.replace("\n", " "))
 
@@ -93,7 +136,8 @@ def summarize_for_speech(md, cfg):
     if mode == "verbatim" or len(cleaned_all) <= short:
         sents = _split_sentences(cleaned_all)
         sents = _cap_by_chars(sents, max_chars)
-        return (" ".join(sents) + code_note).strip()
+        spoken = (" ".join(sents) + code_note).strip()
+        return humanize(spoken) if conversational else spoken
 
     # Extractive: keep document order, lead + conclusion.
     units = _units(body)
@@ -108,5 +152,15 @@ def summarize_for_speech(md, cfg):
         picked = texts[: max_sent - 1] + [texts[-1]]
 
     picked = _cap_by_chars(picked, max_chars)
-    spoken = " ".join(p.rstrip(".!?") + "." for p in picked)
-    return (spoken + code_note).strip()
+
+    # A closing question is the most actionable sentence in the answer --
+    # never drop it. If the last question isn't already picked, append it.
+    questions = [t for t in texts if t.rstrip().endswith("?")]
+    if questions and questions[-1] not in picked:
+        picked.append(questions[-1])
+
+    # Keep ?/! endings -- flattening a question into a statement changes its
+    # meaning when spoken.
+    spoken = " ".join(p if p.rstrip()[-1:] in ".!?" else p + "." for p in picked)
+    spoken = (spoken + code_note).strip()
+    return humanize(spoken) if conversational else spoken
