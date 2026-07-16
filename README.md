@@ -152,6 +152,13 @@ Dictation is hardened against the common failure modes:
 - Kokoro warm synthesis is ~0.5× real-time on a modest CPU (2× faster than the speech is long); the daemon pre-warms the model at startup so the first readback isn't slow.
 - Kokoro outputs 24 kHz audio. Model files live in `models/`.
 
+## Credits & licenses
+
+voice-loop is MIT-licensed (see `LICENSE`). It stands on:
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT) — local speech-to-text
+- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0) via [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) (MIT) — natural text-to-speech
+- pynput, sounddevice, pyperclip, pywin32, pystray — input/audio plumbing
+
 ## Troubleshooting
 - **Start menu pops up on the hotkey?** Change `hotkey` to `["ctrl","alt","space"]`.
 - **Robotic voice / SAPI used?** Check `models/kokoro-v1.0.onnx` and `voices-v1.0.bin` exist; the daemon prints `TTS engine: kokoro` on startup.
