@@ -16,3 +16,6 @@ logs/
 # OS
 Thumbs.db
 Desktop.ini
+
+# Daemon runtime
+.voiceloop_token

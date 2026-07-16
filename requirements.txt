@@ -7,3 +7,5 @@ pywin32>=306
 kokoro-onnx>=0.4.0
 onnxruntime>=1.17
 soundfile>=0.12
+pystray>=0.19
+Pillow>=10.0

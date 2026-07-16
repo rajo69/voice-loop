@@ -29,17 +29,29 @@ Write-Host "Pre-downloading the speech-to-text model (one-time)..."
 $models = Join-Path $root "models"
 if (-not (Test-Path $models)) { New-Item -ItemType Directory -Path $models | Out-Null }
 $base = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
-$files = @{
-    "kokoro-v1.0.onnx" = "$base/kokoro-v1.0.onnx"
-    "voices-v1.0.bin"  = "$base/voices-v1.0.bin"
-}
-foreach ($name in $files.Keys) {
-    $dest = Join-Path $models $name
-    if (Test-Path $dest) {
-        Write-Host "  $name already present, skipping."
-    } else {
-        Write-Host "  Downloading $name (this is the big one, ~300MB for the model)..."
-        Invoke-WebRequest -Uri $files[$name] -OutFile $dest
+# name -> url, minimum plausible size in bytes (guards against a truncated
+# download being silently accepted)
+$files = @(
+    @{ Name = "kokoro-v1.0.onnx"; Url = "$base/kokoro-v1.0.onnx"; MinBytes = 200MB }
+    @{ Name = "voices-v1.0.bin";  Url = "$base/voices-v1.0.bin";  MinBytes = 10MB }
+)
+foreach ($f in $files) {
+    $dest = Join-Path $models $f.Name
+    if ((Test-Path $dest) -and ((Get-Item $dest).Length -ge $f.MinBytes)) {
+        Write-Host "  $($f.Name) already present, skipping."
+        continue
+    }
+    # curl.exe (built into Windows 10+) resumes partial downloads (-C -).
+    Write-Host "  Downloading $($f.Name) (resumable; the model is ~300MB)..."
+    & curl.exe -L --retry 3 --retry-delay 2 -C - -o $dest $f.Url
+    if ((-not (Test-Path $dest)) -or ((Get-Item $dest).Length -lt $f.MinBytes)) {
+        Write-Host "  $($f.Name) looks incomplete -- retrying from scratch..." -ForegroundColor Yellow
+        Remove-Item $dest -ErrorAction SilentlyContinue
+        & curl.exe -L --retry 3 --retry-delay 2 -o $dest $f.Url
+    }
+    if ((-not (Test-Path $dest)) -or ((Get-Item $dest).Length -lt $f.MinBytes)) {
+        Write-Host "  FAILED to download $($f.Name). Re-run install.ps1 (it resumes)." -ForegroundColor Red
+        exit 1
     }
 }
 

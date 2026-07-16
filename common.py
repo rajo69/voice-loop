@@ -98,3 +98,29 @@ def abspath(p):
     if not p:
         return p
     return p if os.path.isabs(p) else os.path.join(ROOT, p)
+
+
+# -- readback-socket auth ----------------------------------------------------
+# The daemon writes a random token on startup; local clients (the Stop hook,
+# stop.ps1) read it back. Keeps other local processes from making the machine
+# talk or shutting the daemon down. Lives in the user profile -- NOT next to
+# the code -- so a plugin-installed hook and a working-clone daemon agree.
+TOKEN_PATH = os.path.join(os.path.expanduser("~"), ".voiceloop_token")
+
+
+def write_token():
+    """Create (or refresh) the shared secret. Returns the token."""
+    import secrets
+    token = secrets.token_hex(16)
+    with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+        f.write(token)
+    return token
+
+
+def read_token():
+    """The current token, or '' if the daemon has never run."""
+    try:
+        with open(TOKEN_PATH, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""

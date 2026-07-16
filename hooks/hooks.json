@@ -1,0 +1,16 @@
+{
+  "description": "voice-loop readback: when Claude finishes a response, hand the answer text to the local voice-loop daemon (non-blocking) so it is summarized and spoken aloud.",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/stop_hook.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

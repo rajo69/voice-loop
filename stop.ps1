@@ -2,11 +2,13 @@
 # then force-kills by port if needed. Run from any terminal:  ./stop.ps1
 $port = 8765
 
-# 1. graceful: ask the daemon to shut itself down
+# 1. graceful: ask the daemon to shut itself down (with its auth token)
 try {
+    $tokenFile = Join-Path $env:USERPROFILE ".voiceloop_token"
+    $token = if (Test-Path $tokenFile) { (Get-Content $tokenFile -Raw).Trim() } else { "" }
     $client = New-Object System.Net.Sockets.TcpClient("127.0.0.1", $port)
     $stream = $client.GetStream()
-    $bytes = [Text.Encoding]::UTF8.GetBytes('{"cmd":"shutdown"}')
+    $bytes = [Text.Encoding]::UTF8.GetBytes(('{"cmd":"shutdown","token":"' + $token + '"}'))
     $stream.Write($bytes, 0, $bytes.Length)
     $stream.Close(); $client.Close()
     Start-Sleep -Milliseconds 700

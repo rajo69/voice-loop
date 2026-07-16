@@ -22,7 +22,7 @@ import threading
 import time
 
 import log
-from common import load_config
+from common import load_config, write_token
 from input_engine import VoiceInput
 from speaker import Speaker
 from summarize import summarize_for_speech
@@ -46,13 +46,15 @@ def _read_all(conn):
 
 
 class Server(threading.Thread):
-    def __init__(self, speaker, summary_cfg, host, port, on_answer=None):
+    def __init__(self, speaker, summary_cfg, host, port, on_answer=None,
+                 token=""):
         super().__init__(daemon=True)
         self.speaker = speaker
         self.summary_cfg = summary_cfg
         self.host = host
         self.port = port
         self.on_answer = on_answer    # fires when Claude finishes (conv mode)
+        self.token = token
         self._sock = None
 
     def bind(self):
@@ -79,6 +81,10 @@ class Server(threading.Thread):
             msg = json.loads(data.decode("utf-8", "replace"))
         except json.JSONDecodeError:
             msg = {"text": data.decode("utf-8", "replace")}
+
+        if self.token and msg.get("token") != self.token:
+            log.info("[out] dropped a message with a bad/missing token.")
+            return
 
         cmd = msg.get("cmd")
         if cmd == "stop":
@@ -171,8 +177,14 @@ def main():
         log.info(f"[out] TTS engine: {speaker.engine_name}")
         _prewarm(speaker)
         d = CFG["daemon"]
+        try:
+            token = write_token()
+        except OSError:
+            log.error("[voice-loop] could not write the auth token; "
+                      "socket runs unauthenticated.")
+            token = ""
         server = Server(speaker, CFG["summary"], d["host"], int(d["port"]),
-                        on_answer=notify_answer)
+                        on_answer=notify_answer, token=token)
         try:
             server.bind()
         except OSError:
@@ -185,6 +197,33 @@ def main():
 
     vin.prewarm()   # load STT model now so the first dictation isn't slow
     vin.start()
+
+    # -- tray icon (optional) ------------------------------------------------
+    class _TrayCtrl:
+        def interrupt_readback(self):
+            if speaker:
+                speaker.interrupt()
+
+        def toggle_conversation(self):
+            conv_toggle()
+
+        def conversation_on(self):
+            return conv_holder["mode"] is not None
+
+        def dictation_enabled(self):
+            return vin.enabled
+
+        def set_dictation(self, on):
+            vin.enabled = bool(on)
+
+        def quit(self):
+            SHUTDOWN.set()
+
+    from tray import Tray
+    tray = Tray(_TrayCtrl())
+    if tray.start():
+        log.info("[voice-loop] tray icon running.")
+
     log.info("[voice-loop] ready. Hold the hotkey to dictate. "
              "Ctrl+C (or stop.ps1) to quit.")
 
@@ -203,6 +242,7 @@ def main():
     m = conv_holder["mode"]
     if m is not None:
         m.stop(chime=False)
+    tray.stop()
     vin.stop()
     log.info("[voice-loop] stopped.")
 

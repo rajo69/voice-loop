@@ -1,0 +1,13 @@
+{
+  "name": "voice-loop-marketplace",
+  "owner": {
+    "name": "Rajarshi"
+  },
+  "plugins": [
+    {
+      "name": "voice-loop",
+      "source": "./",
+      "description": "Talk to Claude Code and let it talk back — local dictation, hands-free conversation mode, and natural spoken readback. Windows, fully offline."
+    }
+  ]
+}

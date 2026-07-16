@@ -41,10 +41,22 @@ Why a daemon: the Stop hook only *sends text over a socket and exits* (~0.1s), s
 ## Install
 
 ```powershell
-./install.ps1        # venv, deps, STT model, Kokoro model (~350MB download, one-time)
+./install.ps1        # venv, deps, STT model, Kokoro model (~350MB download, one-time; resumable)
 ./register_hook.ps1  # adds the readback hook to ~/.claude/settings.json
 ```
 Restart Claude Code so it picks up the hook.
+
+**Or install the hook as a Claude Code plugin** (instead of `register_hook.ps1` — use one or the other, not both, or answers get read twice):
+```
+/plugin marketplace add <your-github-user>/voice-loop
+/plugin install voice-loop@voice-loop-marketplace
+```
+The plugin registers the Stop hook automatically (`hooks/hooks.json`); you still run the daemon from this folder with `./start.ps1`.
+
+**Start at login (optional):**
+```powershell
+./autostart.ps1 on    # hidden window at login; ./autostart.ps1 off to remove
+```
 
 ## Use
 
@@ -100,6 +112,16 @@ Common Whisper mishears ("cloud go", "claude halt") are accepted. Add your own p
 
 ### Pluggable input (use Wispr Flow instead)
 If you prefer Wispr Flow / Win+H for dictation, just don't rely on the hotkey — the readback half works independently. To disable our STT hotkey entirely, set `hotkey` to `[]`. The daemon still runs the readback server.
+
+## Tray icon
+
+If `pystray`/`Pillow` are installed (they're in `requirements.txt`), the daemon shows a green tray dot: **Stop reading**, **Conversation mode** (toggle), **Dictation hotkey** (pause/resume), **Quit**. The daemon runs fine without them.
+
+## Privacy & security
+
+- **100% local at runtime** — audio, transcription, and speech never leave your machine; the only network use is the one-time model download in `install.ps1`.
+- The readback socket (`127.0.0.1:8765`) is protected by a **per-run random token** (`%USERPROFILE%\.voiceloop_token`), so other local processes can't make your machine talk or shut the daemon down.
+- The dictation hotkey uses a global keyboard listener (that's how push-to-talk works system-wide). Keystrokes are only *matched* against the hotkey — never stored or transmitted.
 
 ## Health check
 

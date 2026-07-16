@@ -1,0 +1,10 @@
+{
+  "name": "voice-loop",
+  "version": "0.9.0",
+  "description": "Two-way voice interface for Claude Code on Windows: local push-to-talk dictation (faster-whisper), a hands-free conversation mode driven by spoken commands ('claude go', 'claude hold'), and natural spoken readback of answers (Kokoro-82M TTS). Fully local and offline after a one-time model download.",
+  "author": {
+    "name": "Rajarshi"
+  },
+  "license": "MIT",
+  "keywords": ["voice", "dictation", "tts", "stt", "accessibility", "hands-free", "windows"]
+}

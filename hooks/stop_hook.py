@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common import load_config  # noqa: E402
+from common import load_config, read_token  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -55,7 +55,7 @@ def last_assistant_text(transcript_path):
 
 def send_to_daemon(text, cfg):
     d = cfg["daemon"]
-    payload = json.dumps({"text": text}).encode("utf-8")
+    payload = json.dumps({"text": text, "token": read_token()}).encode("utf-8")
     with socket.create_connection((d["host"], int(d["port"])), timeout=1.0) as s:
         s.sendall(payload)
         s.shutdown(socket.SHUT_WR)
