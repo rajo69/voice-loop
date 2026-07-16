@@ -58,15 +58,7 @@ def _normalize(key):
     return name.lower() if name else None
 
 
-def _resample(audio, src, dst):
-    if src == dst or audio.size == 0:
-        return audio
-    n = int(round(len(audio) * dst / src))
-    if n <= 0:
-        return audio
-    xs = np.linspace(0.0, 1.0, len(audio), endpoint=False)
-    xd = np.linspace(0.0, 1.0, n, endpoint=False)
-    return np.interp(xd, xs, audio).astype(np.float32)
+_resample = stream_stt.resample
 
 
 class _Recorder:
@@ -126,7 +118,8 @@ class _Recorder:
 
 
 class VoiceInput:
-    def __init__(self, cfg, on_activate=None, on_text=None):
+    def __init__(self, cfg, on_activate=None, on_text=None,
+                 on_mode_toggle=None):
         self.cfg = cfg
         stt = dict(cfg["stt"])
         if stt.get("speed_profile", "accurate") == "fast":
@@ -134,6 +127,16 @@ class VoiceInput:
             stt["model"] = "base.en"
             stt["beam_size"] = 2
         self.stt = stt
+        conv = cfg.get("conversation") or {}
+        self.enabled = True                     # False while Mode 2 owns the mic
+        self.on_mode_toggle = on_mode_toggle    # Shift + triple-tap Win
+        self._tap_enabled = bool(conv.get("enabled", True)) and on_mode_toggle
+        self._hold_confirm_s = float(conv.get("hold_confirm_ms", 180)) / 1000.0
+        self._triple_tap_s = float(conv.get("triple_tap_ms", 1200)) / 1000.0
+        self._hold_timer = None
+        self._hold_confirmed = False
+        self._chord_t0 = 0.0
+        self._taps = []
         self.sr = int(stt["sample_rate"])
         self.required = {_ALIASES.get(t.lower(), t.lower()) for t in cfg["hotkey"]}
         self.trigger = stt.get("trigger", "hold")
@@ -389,10 +392,41 @@ class VoiceInput:
             self._pressed.add(tok)
         if self.required and self.required <= self._pressed and not self._armed:
             self._armed = True
+            self._chord_t0 = time.time()
+            self._hold_confirmed = False
             if self.trigger == "hold":
-                threading.Thread(target=self._start_record, daemon=True).start()
+                if self._tap_enabled:
+                    # Wait a beat: a quick release is a tap (mode gesture),
+                    # a sustained press is hold-to-talk.
+                    self._hold_timer = threading.Timer(self._hold_confirm_s,
+                                                       self._confirm_hold)
+                    self._hold_timer.daemon = True
+                    self._hold_timer.start()
+                else:
+                    self._confirm_hold()
             else:
                 threading.Thread(target=self._toggle, daemon=True).start()
+
+    def _confirm_hold(self):
+        if not (self.required <= self._pressed):
+            return                       # already released -> it was a tap
+        self._hold_confirmed = True
+        if self.enabled:
+            threading.Thread(target=self._start_record, daemon=True).start()
+
+    def _register_tap(self):
+        now = time.time()
+        self._taps = [t for t in self._taps if now - t <= self._triple_tap_s]
+        self._taps.append(now)
+        if len(self._taps) >= 3:
+            self._taps = []
+            threading.Thread(target=self._fire_mode_toggle, daemon=True).start()
+
+    def _fire_mode_toggle(self):
+        try:
+            self.on_mode_toggle()
+        except Exception:
+            log.exception("[conv] mode toggle failed")
 
     def _neutralize_start_menu(self):
         """Mask the Windows-key release with a Ctrl tap so the Start menu
@@ -413,7 +447,15 @@ class VoiceInput:
             if was_armed:
                 self._neutralize_start_menu()
             if self.trigger == "hold" and was_armed:
-                threading.Thread(target=self._stop_and_process, daemon=True).start()
+                if self._hold_timer is not None:
+                    self._hold_timer.cancel()
+                    self._hold_timer = None
+                if self._hold_confirmed:
+                    threading.Thread(target=self._stop_and_process,
+                                     daemon=True).start()
+                elif (self._tap_enabled and
+                      time.time() - self._chord_t0 < self._hold_confirm_s * 2):
+                    self._register_tap()
 
     # -- lifecycle ---------------------------------------------------------
     def start(self):

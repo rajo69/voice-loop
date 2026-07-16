@@ -18,6 +18,18 @@ import threading
 import numpy as np
 
 
+def resample(audio, src, dst):
+    """Linear-interpolation resample (good enough for 16k speech STT)."""
+    if src == dst or audio.size == 0:
+        return audio
+    n = int(round(len(audio) * dst / src))
+    if n <= 0:
+        return audio
+    xs = np.linspace(0.0, 1.0, len(audio), endpoint=False)
+    xd = np.linspace(0.0, 1.0, n, endpoint=False)
+    return np.interp(xd, xs, audio).astype(np.float32)
+
+
 class EnergyEndpointer:
     """Frame-energy endpointer: split a live sample stream at pauses.
 

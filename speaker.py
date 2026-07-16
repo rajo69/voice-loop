@@ -74,6 +74,12 @@ class Speaker:
     def engine_name(self):
         return getattr(self.engine, "name", "unknown")
 
+    @property
+    def speaking(self):
+        """True while a readback is playing (conversation half-duplex gate)."""
+        t = self._thread
+        return bool(t is not None and t.is_alive() and not self._stop.is_set())
+
     def interrupt(self):
         """Stop whatever is currently playing."""
         self._stop.set()

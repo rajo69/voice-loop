@@ -46,12 +46,13 @@ def _read_all(conn):
 
 
 class Server(threading.Thread):
-    def __init__(self, speaker, summary_cfg, host, port):
+    def __init__(self, speaker, summary_cfg, host, port, on_answer=None):
         super().__init__(daemon=True)
         self.speaker = speaker
         self.summary_cfg = summary_cfg
         self.host = host
         self.port = port
+        self.on_answer = on_answer    # fires when Claude finishes (conv mode)
         self._sock = None
 
     def bind(self):
@@ -93,6 +94,11 @@ class Server(threading.Thread):
         text = msg.get("text", "")
         if not text:
             return
+        if self.on_answer:
+            try:
+                self.on_answer()
+            except Exception:
+                pass
         spoken = summarize_for_speech(text, self.summary_cfg)
         if spoken:
             print(f"[out] speaking ({len(spoken)} chars): {spoken[:80]}...",
@@ -120,16 +126,52 @@ def main():
         if speaker:
             speaker.interrupt()
 
-    vin = VoiceInput(CFG, on_activate=barge_in)
+    # -- Mode 2 (conversation) lifecycle ------------------------------------
+    conv_holder = {"mode": None}
+
+    def notify_answer():
+        m = conv_holder["mode"]
+        if m is not None:
+            m.on_claude_done()
+
+    def conv_exited():
+        # Spoken "exit conversation" -- the mode already stopped itself.
+        conv_holder["mode"] = None
+        vin.enabled = True
+
+    def conv_toggle():
+        m = conv_holder["mode"]
+        if m is not None:
+            conv_holder["mode"] = None
+            m.stop()
+            vin.enabled = True
+            return
+        import injector
+        from conversation import ConversationMode
+        hwnd = injector.get_active_window()
+        mode = ConversationMode(CFG, vin._transcribe, speaker, hwnd,
+                                on_exit=conv_exited)
+        try:
+            mode.start()
+        except Exception:
+            log.exception("[conv] could not start conversation mode")
+            return
+        conv_holder["mode"] = mode
+        vin.enabled = False    # Mode 2 owns the mic; hold-to-talk pauses
+
+    vin = VoiceInput(CFG, on_activate=barge_in, on_mode_toggle=conv_toggle)
 
     hk = "+".join(sorted(vin.required))
     log.info(f"[voice-loop] daemon starting. Hotkey: {hk}")
+    if (CFG.get("conversation") or {}).get("enabled", True):
+        log.info("[conv] Shift + triple-tap Win toggles conversation mode.")
 
     if speaker:
         log.info(f"[out] TTS engine: {speaker.engine_name}")
         _prewarm(speaker)
         d = CFG["daemon"]
-        server = Server(speaker, CFG["summary"], d["host"], int(d["port"]))
+        server = Server(speaker, CFG["summary"], d["host"], int(d["port"]),
+                        on_answer=notify_answer)
         try:
             server.bind()
         except OSError:
@@ -157,6 +199,9 @@ def main():
             time.sleep(0.3)
     except KeyboardInterrupt:
         pass
+    m = conv_holder["mode"]
+    if m is not None:
+        m.stop(chime=False)
     vin.stop()
     log.info("[voice-loop] stopped.")
 

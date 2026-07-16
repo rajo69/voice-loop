@@ -2,8 +2,9 @@
 
 A **two-way voice interface for the Claude Code CLI** — talk instead of type, listen instead of read. Fully local and offline (after a one-time model download).
 
-- **Input:** press **Shift + Win**, speak, press it again to stop. Transcribed locally with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and typed into your prompt. Press **Enter** to send. *(Already have Wispr Flow? You can use that for input instead — see "Pluggable input".)*
+- **Input:** hold **Shift + Win**, speak, release. Transcribed locally with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and pasted into your prompt. Press **Enter** to send. *(Already have Wispr Flow? You can use that for input instead — see "Pluggable input".)*
 - **Output:** when Claude finishes, you hear a **ping** and a **spoken summary** — read with the natural-sounding [Kokoro-82M](https://github.com/thewh1teagle/kokoro-onnx) voice (falls back to Windows SAPI if the model isn't present). Code blocks and file paths are skipped so it stays listenable.
+- **Conversation mode (hands-free):** hold **Shift** and **triple-tap Win** — then just talk. Your speech drafts live into the prompt, and spoken commands are your keyboard: say **"claude go"** to submit, **"claude hold"** to interrupt a running response and steer, **"claude scratch"** to clear the draft, **"claude stop"** to halt a readback, **"exit conversation"** (or triple-tap again) to leave.
 
 ## Architecture
 
@@ -27,7 +28,10 @@ Why a daemon: the Stop hook only *sends text over a socket and exits* (~0.1s), s
 | File | Role |
 |------|------|
 | `voiced.py` | The daemon: input listener + readback socket server. |
-| `input_engine.py` | Hotkey → record → transcribe → type. |
+| `input_engine.py` | Hotkey → record → transcribe → paste (+ triple-tap gesture). |
+| `conversation.py` | Mode 2: hands-free listening, live drafting, state machine. |
+| `commands.py` | Spoken-command parsing ("claude go/hold/scratch/stop"). |
+| `stream_stt.py` | Pause-based segmentation + incremental transcription. |
 | `summarize.py` | Markdown → short spoken summary (no mid-sentence cutoff). |
 | `tts.py` | Engine abstraction (Kokoro / SAPI). |
 | `speaker.py` | Interruptible, single-instance playback. |
@@ -52,6 +56,22 @@ Restart Claude Code so it picks up the hook.
 3. **Hold Shift + Win**, speak, **release** → your words are pasted into the prompt → press **Enter** to send. *(Set `stt.trigger` to `"toggle"` for press-once-to-start, press-again-to-stop instead.)*
 4. Claude answers → ping + spoken summary, **streamed** so it starts within ~1s. Start talking (or send a new prompt) to cut a readback short.
 
+### Conversation mode (hands-free)
+
+1. Focus your Claude Code terminal, then hold **Shift** and **triple-tap Win** (within ~1.2s). An ascending chime confirms the mode is on and the mic stays hot; the focused window is captured as the target.
+2. Talk naturally — each phrase (split at your pauses) is transcribed, dev-polished, and pasted into the prompt as a live draft.
+3. Say a command at the end of (or as) an utterance:
+   | You say | It does |
+   |---------|---------|
+   | *"… claude go"* | pastes the last phrase, presses **Enter** — Claude runs |
+   | *"claude hold"* | presses **Esc** to interrupt Claude mid-run so you can steer |
+   | *"claude scratch"* | clears the drafted prompt |
+   | *"claude stop"* | stops the current readback |
+   | *"exit conversation"* | leaves the mode (descending chime); triple-tap works too |
+4. While Claude runs, chatter is ignored (so you can think out loud); when it answers, the summary is spoken and listening resumes. While the readback plays, content is dropped (the mic would hear our own voice) but commands still work — half-duplex by design.
+
+Common Whisper mishears ("cloud go", "claude halt") are accepted. Add your own phrasings under `conversation.commands` in `config.json`.
+
 ## Configuration — `config.json`
 
 | Key | Meaning |
@@ -65,6 +85,10 @@ Restart Claude Code so it picks up the hook.
 | `stt.drop_no_speech_prob` | Drop filler/hallucinated segments above this no-speech probability. |
 | `stt.model` | `base.en` (default); `tiny.en` for weaker machines; `small.en`/`medium.en` for more accuracy. |
 | `stt.auto_enter` | `true` to submit automatically after dictation. |
+| `conversation.enabled` | Turn the triple-tap gesture / Mode 2 on or off. |
+| `conversation.triple_tap_ms` | Window for the three Win taps (default 1200). |
+| `conversation.min_silence_ms` | Pause length that ends an utterance in Mode 2. |
+| `conversation.commands` | Override the spoken commands, e.g. `{"go": ["send it"]}`. |
 | `summary.mode` | `extractive` (compress long answers) or `verbatim` (read cleaned text). |
 | `summary.short_threshold_chars` | Answers shorter than this are read (nearly) whole. |
 | `summary.max_sentences` / `max_chars` | Caps for long-answer compression. |

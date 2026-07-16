@@ -39,6 +39,14 @@ _DEFAULTS = {
         "type_delay": 0.0,
         "notify_start_stop": True,
     },
+    "conversation": {
+        "enabled": True,
+        "triple_tap_ms": 1200,
+        "hold_confirm_ms": 180,
+        "min_silence_ms": 600,
+        "paste_while_running": False,
+        "commands": None,
+    },
     "summary": {
         "mode": "extractive",
         "short_threshold_chars": 350,
