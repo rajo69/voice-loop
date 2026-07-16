@@ -48,7 +48,7 @@ Restart Claude Code so it picks up the hook.
 
 **Or install the hook as a Claude Code plugin** (instead of `register_hook.ps1` — use one or the other, not both, or answers get read twice):
 ```
-/plugin marketplace add <your-github-user>/voice-loop
+/plugin marketplace add rajo69/voice-loop
 /plugin install voice-loop@voice-loop-marketplace
 ```
 The plugin registers the Stop hook automatically (`hooks/hooks.json`); you still run the daemon from this folder with `./start.ps1`.

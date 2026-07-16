@@ -5,6 +5,8 @@
   "author": {
     "name": "Rajarshi"
   },
+  "homepage": "https://github.com/rajo69/voice-loop",
+  "repository": "https://github.com/rajo69/voice-loop",
   "license": "MIT",
   "keywords": ["voice", "dictation", "tts", "stt", "accessibility", "hands-free", "windows"]
 }
