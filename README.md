@@ -14,7 +14,7 @@ One warm daemon runs both halves; the Claude Code hook is a thin, non-blocking c
 [Shift+Win] ─▶ input_engine ─▶ faster-whisper ─▶ types text ─▶ you press Enter
                     │ (barge-in: talking interrupts any readback)
                     ▼
-Claude answers ─▶ Stop hook ─(socket, ~0.1s)─▶  voiced.py daemon
+Claude answers ─▶ Stop hook ─(socket, exits)─▶  voiced.py daemon
                                                    │
                                         summarize.py (extractive)
                                                    │
@@ -22,7 +22,7 @@ Claude answers ─▶ Stop hook ─(socket, ~0.1s)─▶  voiced.py daemon
                                         (interruptible; new answer preempts old)
 ```
 
-Why a daemon: the Stop hook only *sends text over a socket and exits* (~0.1s), so Claude Code is never blocked while a long answer is spoken. The daemon keeps the TTS model warm and plays speech that can be interrupted.
+Why a daemon: the Stop hook only *sends text over a socket and exits*, so Claude Code is never blocked while a long answer is spoken. The daemon keeps the TTS model warm and plays speech that can be interrupted.
 
 ### Files
 | File | Role |
@@ -66,7 +66,7 @@ The plugin registers the Stop hook automatically (`hooks/hooks.json`); you still
    ```
 2. Open Claude Code in another terminal.
 3. **Hold Shift + Win**, speak, **release** → your words are pasted into the prompt → press **Enter** to send. *(Set `stt.trigger` to `"toggle"` for press-once-to-start, press-again-to-stop instead.)*
-4. Claude answers → ping + spoken summary, **streamed** so it starts within ~1s. Start talking (or send a new prompt) to cut a readback short.
+4. Claude answers → ping + spoken summary, **streamed** so it starts as soon as the first sentence is synthesized. Start talking (or send a new prompt) to cut a readback short.
 
 ### Conversation mode (hands-free)
 
@@ -149,7 +149,7 @@ Dictation is hardened against the common failure modes:
 ```
 
 ## Performance notes
-- Kokoro warm synthesis is ~0.5× real-time on a modest CPU (2× faster than the speech is long); the daemon pre-warms the model at startup so the first readback isn't slow.
+- Kokoro stays loaded in the warm daemon, so no model load happens per readback; the daemon pre-warms the model at startup so the first readback isn't slow.
 - Kokoro outputs 24 kHz audio. Model files live in `models/`.
 
 ## Credits & licenses
