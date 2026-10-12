@@ -13,7 +13,7 @@ The "conversational product" release.
   expansion), closing questions always read in full, rising ping when Claude
   ends with a question.
 - **Incremental transcription:** audio is segmented at pauses and transcribed
-  *while* you're still holding the hotkey, so the paste lands ~1s after
+  *while* you're still holding the hotkey, so the paste lands shortly after
   release; adaptive beam size for short clips.
 - **Claude Code plugin packaging:** `.claude-plugin/plugin.json` +
   `hooks/hooks.json` + `marketplace.json` — installable via `/plugin`.
@@ -36,5 +36,5 @@ The "conversational product" release.
   sample-rate fallback, Start-menu suppression.
 - Readback: warm daemon + thin non-blocking Stop hook, extractive summarizer
   (never cuts mid-sentence), Kokoro-82M with SAPI fallback, pipelined gapless
-  streaming (~1.8s to first audio), barge-in.
+  streaming, barge-in.
 - Reliable shutdown (Ctrl+C / `stop.ps1`), rotating logs, `diagnose.py`.
