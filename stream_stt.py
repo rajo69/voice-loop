@@ -1,8 +1,8 @@
 """
 Incremental speech-to-text streaming.
 
-Why: transcribing a whole clip only after key-release makes a 6-second
-utterance cost ~4s of waiting. Here audio is segmented at natural pauses
+Why: transcribing a whole clip only after key-release makes a long
+utterance wait for its whole transcription. Here audio is segmented at natural pauses
 WHILE it is still being recorded, and each closed segment is transcribed in
 the background — so on release only the short tail is left to transcribe.
 
