@@ -45,7 +45,7 @@ foreach ($f in $files) {
     Write-Host "  Downloading $($f.Name) (resumable; the model is ~300MB)..."
     & curl.exe -L --retry 3 --retry-delay 2 -C - -o $dest $f.Url
     if ((-not (Test-Path $dest)) -or ((Get-Item $dest).Length -lt $f.MinBytes)) {
-        Write-Host "  $($f.Name) looks incomplete -- retrying from scratch..." -ForegroundColor Yellow
+        Write-Host "  $($f.Name) is partial, downloading it again..." -ForegroundColor Yellow
         Remove-Item $dest -ErrorAction SilentlyContinue
         & curl.exe -L --retry 3 --retry-delay 2 -o $dest $f.Url
     }

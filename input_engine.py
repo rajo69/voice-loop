@@ -92,7 +92,7 @@ class _Recorder:
         try:
             self._open(self.sr)
         except Exception:
-            # Mic doesn't support 16k -> capture at its default rate, resample later.
+            # Capture at the mic's native rate when 16k is off the menu, then resample.
             try:
                 info = sd.query_devices(self.device_index, "input")
                 default_sr = int(info["default_samplerate"])
