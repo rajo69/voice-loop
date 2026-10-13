@@ -7,7 +7,7 @@
     {
       "name": "voice-loop",
       "source": "./",
-      "description": "Talk to Claude Code and let it talk back — local dictation, hands-free conversation mode, and natural spoken readback. Windows, fully offline."
+      "description": "Talk to Claude Code and let it talk back: local dictation, hands-free conversation mode, and natural spoken readback. Windows, fully offline."
     }
   ]
 }

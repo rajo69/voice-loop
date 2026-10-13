@@ -4,12 +4,12 @@ Incremental speech-to-text streaming.
 Why: transcribing a whole clip only after key-release makes a long
 utterance wait for its whole transcription. Here audio is segmented at natural pauses
 WHILE it is still being recorded, and each closed segment is transcribed in
-the background — so on release only the short tail is left to transcribe.
+the background, so on release only the short tail is left to transcribe.
 
 The same machinery drives Mode 2 (conversation mode): a long-lived session
 whose closed segments are delivered via a callback instead of finalize().
 
-No Windows / audio-device dependencies — pure numpy + threading, so the
+No Windows / audio-device dependencies: pure numpy + threading, so the
 segmentation and ordering logic is unit-testable anywhere.
 """
 import queue

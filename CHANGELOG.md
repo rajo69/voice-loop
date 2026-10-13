@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.9.0 — 2026-07-16
+## 0.9.0 (2026-07-16)
 
 The "conversational product" release.
 
 ### Added
-- **Conversation mode (Mode 2):** Shift + triple-tap Win for hands-free use —
+- **Conversation mode (Mode 2):** Shift + triple-tap Win for hands-free use:
   always-on listening, live drafting into the prompt, and spoken commands:
   "claude go" (submit), "claude hold" (interrupt & steer), "claude scratch"
   (clear draft), "claude stop" (halt readback), "exit conversation".
@@ -16,7 +16,7 @@ The "conversational product" release.
   *while* you're still holding the hotkey, so the paste lands shortly after
   release; adaptive beam size for short clips.
 - **Claude Code plugin packaging:** `.claude-plugin/plugin.json` +
-  `hooks/hooks.json` + `marketplace.json` — installable via `/plugin`.
+  `hooks/hooks.json` + `marketplace.json`, installable via `/plugin`.
 - **Tray icon** (optional): stop reading, mode toggle, dictation pause, quit.
 - **Socket auth:** per-run random token protects the readback socket.
 - **Autostart:** `./autostart.ps1 on|off` login shortcut.
@@ -29,7 +29,7 @@ The "conversational product" release.
 - Resumable, size-checked Kokoro model download in `install.ps1`.
 - Questions were flattened into statements by the summarizer.
 
-## 0.8.x — 2026-07-15 (initial development)
+## 0.8.x (2026-07-15, initial development)
 
 - Mode 1 dictation: hold-to-talk, clipboard-paste injection, window targeting,
   dev-term polish ("dot py" → `.py`), Whisper hallucination filter,
