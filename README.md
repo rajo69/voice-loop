@@ -1,10 +1,12 @@
 # voice-loop
 
-A **two-way voice interface for the Claude Code CLI**: talk instead of type, listen instead of read. Fully local and offline (after a one-time model download).
+Speak your prompt to the Claude Code CLI and hear the answer read back. voice-loop is a two-way voice interface that runs on your own machine. [faster-whisper](https://github.com/SYSTRAN/faster-whisper) turns your speech into text and pastes it into the prompt; when Claude finishes, the [Kokoro-82M](https://github.com/thewh1teagle/kokoro-onnx) voice reads you a spoken summary of the answer. After the one-time model download it needs no network.
 
-- **Input:** hold **Shift + Win**, speak, release. Transcribed locally with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and pasted into your prompt. Press **Enter** to send. *(Already have Wispr Flow? You can use that for input instead; see "Pluggable input".)*
-- **Output:** when Claude finishes, you hear a **ping** and a **spoken summary**, read with the natural-sounding [Kokoro-82M](https://github.com/thewh1teagle/kokoro-onnx) voice (falls back to Windows SAPI if the model isn't present). Code blocks and file paths are skipped so it stays listenable.
-- **Conversation mode (hands-free):** hold **Shift** and **triple-tap Win**, then just talk. Your speech drafts live into the prompt, and spoken commands are your keyboard: say **"claude go"** to submit, **"claude hold"** to interrupt a running response and steer, **"claude scratch"** to clear the draft, **"claude stop"** to halt a readback, **"exit conversation"** (or triple-tap again) to leave.
+To dictate, hold **Shift + Win**, speak, release. Your words are transcribed locally and pasted into the prompt; press **Enter** to send. If you already dictate with Wispr Flow, keep it and use voice-loop for the readback alone (see [Pluggable input](#pluggable-input-use-wispr-flow-instead)).
+
+When Claude finishes, you hear a ping and then the summary, read with Kokoro (Windows SAPI if the model is not present). Code blocks and file paths are skipped so the readback stays listenable.
+
+For hands-free work, hold **Shift** and **triple-tap Win**, then talk. Your speech drafts live into the prompt and spoken commands take the place of the keyboard: say **"claude go"** to submit, **"claude hold"** to interrupt a running response and steer, **"claude scratch"** to clear the draft, **"claude stop"** to halt a readback, and **"exit conversation"** (or triple-tap again) to leave.
 
 ## Architecture
 
@@ -22,7 +24,7 @@ Claude answers ─▶ Stop hook ─(socket, exits)─▶  voiced.py daemon
                                         (interruptible; new answer preempts old)
 ```
 
-Why a daemon: the Stop hook only *sends text over a socket and exits*, so Claude Code is never blocked while a long answer is spoken. The daemon keeps the TTS model warm and plays speech that can be interrupted.
+Why a daemon: the Stop hook only *sends text over a socket and exits*, so Claude Code is never blocked while a long answer is spoken. Keeping the TTS model warm in one long-lived process means no readback waits for a model load, and playback can be interrupted mid-sentence.
 
 ### Files
 | File | Role |
@@ -70,8 +72,8 @@ The plugin registers the Stop hook automatically (`hooks/hooks.json`); you still
 
 ### Conversation mode (hands-free)
 
-1. Focus your Claude Code terminal, then hold **Shift** and **triple-tap Win** (within ~1.2s). An ascending chime confirms the mode is on and the mic stays hot; the focused window is captured as the target.
-2. Talk naturally: each phrase (split at your pauses) is transcribed, dev-polished, and pasted into the prompt as a live draft.
+1. Focus your Claude Code terminal, then hold **Shift** and **triple-tap Win** (within 1.2 seconds; configurable). An ascending chime confirms the mode is on and the mic stays hot; the focused window is captured as the target.
+2. Talk normally: each phrase (split at your pauses) is transcribed, cleaned up and pasted into the prompt as a live draft.
 3. Say a command at the end of (or as) an utterance:
    | You say | It does |
    |---------|---------|
@@ -111,17 +113,19 @@ Common Whisper mishears ("cloud go", "claude halt") are accepted. Add your own p
 | `tts.ping` | Play a chime before reading. |
 
 ### Pluggable input (use Wispr Flow instead)
-If you prefer Wispr Flow / Win+H for dictation, just don't rely on the hotkey; the readback half works independently. To disable our STT hotkey entirely, set `hotkey` to `[]`. The daemon still runs the readback server.
+If you prefer Wispr Flow or Win+H for dictation, ignore the hotkey; the readback half works on its own. To switch our STT hotkey off entirely, set `hotkey` to `[]`. The readback server keeps running in the daemon either way.
 
 ## Tray icon
 
-If `pystray`/`Pillow` are installed (they're in `requirements.txt`), the daemon shows a green tray dot: **Stop reading**, **Conversation mode** (toggle), **Dictation hotkey** (pause/resume), **Quit**. The daemon runs fine without them.
+If `pystray`/`Pillow` are installed (they're in `requirements.txt`), the daemon shows a green tray dot with four entries: **Stop reading**, **Conversation mode** (toggle), **Dictation hotkey** (pause/resume) and **Quit**. Without them the daemon runs the same, minus the icon.
 
 ## Privacy & security
 
-- **100% local at runtime**: audio, transcription, and speech never leave your machine; the only network use is the one-time model download in `install.ps1`.
-- The readback socket (`127.0.0.1:8765`) is protected by a **per-run random token** (`%USERPROFILE%\.voiceloop_token`), so other local processes can't make your machine talk or shut the daemon down.
-- The dictation hotkey uses a global keyboard listener (that's how push-to-talk works system-wide). Keystrokes are only *matched* against the hotkey, never stored or transmitted.
+Audio, transcription and speech never leave your machine; the only network use is the one-time model download in `install.ps1`.
+
+The readback socket (`127.0.0.1:8765`) is protected by a per-run random token (`%USERPROFILE%\.voiceloop_token`), so other local processes can't make your machine talk or shut the daemon down.
+
+Push-to-talk works system-wide because the dictation hotkey uses a global keyboard listener. Keystrokes are only *matched* against the hotkey, never stored or transmitted.
 
 ## Health check
 
@@ -134,12 +138,9 @@ If the wrong mic is picked, note its index from `--devices` and set `stt.device_
 
 ## Reliability (Mode 1)
 
-Dictation is hardened against the common failure modes:
-- **Window targeting**: the window focused when you *start* talking is refocused before pasting, so text can't land in the Start menu or a window that stole focus.
-- **Decoupled transcription**: recording is instant; transcription runs in a worker queue, so fast or back-to-back holds never drop.
-- **Sample-rate fallback**: if your mic doesn't do 16 kHz it's captured at its native rate and resampled.
-- **Hallucination filter**: Whisper's phantom "thank you"/"you" on silence is dropped.
-- **Guards**: max-record auto-stop, clean modifier release before paste, single-instance daemon, and a rotating log at `logs/voiceloop.log`.
+Dictation is built to survive the ways push-to-talk usually goes wrong on a desktop.
+
+The window that was focused when you *started* talking is refocused before pasting, so text can't land in the Start menu or in a window that stole focus. Recording is instant and transcription runs in a worker queue, so fast or back-to-back holds never drop. If your mic doesn't do 16 kHz it's captured at its native rate and resampled. Whisper's phantom "thank you" and "you" on silence are filtered out. Round that sit a max-record auto-stop, a clean modifier release before paste, a single-instance daemon, and a rotating log at `logs/voiceloop.log`.
 
 ## Test without Claude
 
@@ -149,18 +150,17 @@ Dictation is hardened against the common failure modes:
 ```
 
 ## Performance notes
-- Kokoro stays loaded in the warm daemon, so no model load happens per readback; the daemon pre-warms the model at startup so the first readback isn't slow.
-- Kokoro outputs 24 kHz audio. Model files live in `models/`.
+- Kokoro is loaded at daemon startup and stays loaded. It outputs 24 kHz audio; model files live in `models/`.
 
 ## Credits & licenses
 
 voice-loop is MIT-licensed (see `LICENSE`). It stands on:
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT): local speech-to-text
-- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0) via [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) (MIT): natural text-to-speech
+- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0) via [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) (MIT): text-to-speech
 - pynput, sounddevice, pyperclip, pywin32, pystray: input/audio plumbing
 
 ## Troubleshooting
-- **Start menu pops up on the hotkey?** Change `hotkey` to `["ctrl","alt","space"]`.
-- **Robotic voice / SAPI used?** Check `models/kokoro-v1.0.onnx` and `voices-v1.0.bin` exist; the daemon prints `TTS engine: kokoro` on startup.
-- **No audio input?** Set `stt.device_index`. List devices: `.venv\Scripts\python.exe -c "import sounddevice as sd; print(sd.query_devices())"`.
-- **Remove the hook:** delete the `stop_hook.py` entry from `~/.claude/settings.json`.
+- A Start menu that pops up on the hotkey means Windows took the Win key: change `hotkey` to `["ctrl","alt","space"]`.
+- A robotic voice means SAPI is in use: check that `models/kokoro-v1.0.onnx` and `voices-v1.0.bin` exist; the daemon prints `TTS engine: kokoro` on startup when they do.
+- With no audio input, set `stt.device_index`. List devices: `.venv\Scripts\python.exe -c "import sounddevice as sd; print(sd.query_devices())"`.
+- To remove the hook, delete the `stop_hook.py` entry from `~/.claude/settings.json`.
